@@ -1,0 +1,36 @@
+# ============================================================================
+#  PNDA — Matching Grant · configuration Supabase CLI
+#  project_id doit correspondre à la référence du projet distant.
+# ============================================================================
+project_id = "splqfwjlndatyvuhycyu"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[storage]
+enabled = true
+file_size_limit = "10MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_signup = false          # création de comptes réservée à l'administrateur
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true

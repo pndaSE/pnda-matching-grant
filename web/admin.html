@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PNDA — Tableau de bord Matching Grant</title>
+<script src="js/theme.js"></script>
+<style>
+/* ============================================================================
+   PNDA — Matching Grant · Console S&E
+   ----------------------------------------------------------------------------
+   Deux systèmes de couleurs cohabitent, volontairement :
+
+   • LE DÉCOR (en-tête, boutons, accents de section) utilise les couleurs
+     modules du projet — #D91B5C, #92278F, #008B8B, #7AC143, #F5A623, #F26522.
+
+   • LES DONNÉES utilisent une palette catégorielle dérivée de ces mêmes
+     teintes mais recalées dans la bande de luminosité du fond sombre. Les
+     couleurs de marque brutes échouent aux contrôles daltonisme : vert et
+     ambre se confondent (ΔE 2.7 en protanopie, seuil 8). L'ordre ci-dessous
+     a été validé sur surface #1b2537 : pire paire adjacente ΔE 15.3 (CVD),
+     20.6 (vision normale), contraste ≥ 3:1 partout.
+   ========================================================================== */
+:root{
+  --bg-0:#0f172a; --bg-1:#1e293b; --bg-2:#1e1b4b;
+  --glass:rgba(255,255,255,.03); --glass-2:rgba(255,255,255,.055);
+  --stroke:rgba(255,255,255,.10); --stroke-2:rgba(255,255,255,.18);
+  --txt:#e2e8f0; --txt-dim:#94a3b8; --txt-soft:#cbd5e1;
+
+  /* Décor — couleurs modules du projet */
+  --m-scan:#D91B5C; --m-impr:#92278F; --m-acq:#008B8B;
+  --m-base:#7AC143; --m-stat:#F5A623; --m-part:#F26522;
+
+  /* Données — palette catégorielle validée (ordre figé, jamais recyclé) */
+  --s1:#559c00; --s2:#c44ebf; --s3:#b57700; --s4:#0d9999;
+  --s5:#dd5403; --s6:#3480fc; --s7:#e3406b;
+
+  /* Statuts — palette réservée, toujours accompagnée d'une icône et d'un mot */
+  --st-soumis:#94a3b8; --st-verif:#fab219; --st-valide:#0ca30c;
+  --st-rejete:#d03b3b; --st-doublon:#ec835a;
+
+  /* Chrome des graphiques */
+  --viz-surface:#1b2537;
+  --viz-grid:rgba(255,255,255,.07);
+  --viz-axis:rgba(255,255,255,.15);
+  --viz-muted:#94a3b8;
+  --viz-ink:#ffffff;            /* étiquettes directes sur les marques */
+
+  /* Divers */
+  --or:#F5A623;                 /* texte d'accent ambre */
+  --opt-bg:#1e293b;             /* fond des listes deroulantes natives */
+  --sticky:#16203a;             /* fond des entetes de tableau collants */
+  --tt-bg:rgba(11,17,32,.95);
+  --panneau-bg:linear-gradient(160deg,#0f172a,#1a2338 60%,#221d4a);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--txt);
+  min-height:100vh;line-height:1.5;font-size:14px;
+  background:linear-gradient(135deg,var(--bg-0) 0%,var(--bg-1) 48%,var(--bg-2) 100%);
+  background-attachment:fixed;overflow-x:hidden;
+}
+.blobs{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.26;animation:float 20s ease-in-out infinite}
+.b1{width:520px;height:520px;background:#7AC143;top:-170px;left:-150px}
+.b2{width:460px;height:460px;background:#008B8B;bottom:-150px;right:-120px;animation-delay:-7s}
+.b3{width:420px;height:420px;background:#92278F;top:42%;right:8%;animation-delay:-12s;opacity:.18}
+.b4{width:340px;height:340px;background:#F5A623;bottom:16%;left:6%;animation-delay:-3s;opacity:.14}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(40px,-50px) scale(1.1)}66%{transform:translate(-35px,35px) scale(.94)}}
+.wrap{position:relative;z-index:1;max-width:1500px;margin:0 auto;padding:22px 20px 80px}
+
+/* ───────── connexion ───────── */
+.login{min-height:100vh;display:grid;place-items:center;padding:24px;position:relative;z-index:1}
+.login-card{
+  width:100%;max-width:420px;padding:34px 32px;border-radius:22px;
+  background:var(--glass);backdrop-filter:blur(24px);border:1px solid var(--stroke);
+  box-shadow:0 30px 80px -40px #000, inset 0 1px 0 rgba(255,255,255,.06);
+  animation:enter .5s cubic-bezier(.22,1,.36,1) both;
+}
+.login-card .mark{width:78px;height:78px;margin:0 auto 18px;border-radius:20px;padding:6px;
+  background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.02));
+  border:1px solid var(--stroke-2);box-shadow:0 0 34px rgba(122,193,67,.28)}
+.login-card .mark svg{width:100%;height:100%;display:block}
+.login-card h1{font-size:1.16rem;text-align:center;font-weight:800;letter-spacing:-.3px}
+.login-card p.sub{text-align:center;color:var(--txt-dim);font-size:.8rem;margin:5px 0 24px}
+.login-card label{display:block;font-size:.78rem;font-weight:600;color:var(--txt-soft);margin:0 0 6px}
+.login-card .champ{margin-bottom:15px}
+
+input,select,textarea{
+  width:100%;padding:10px 12px;font-size:.86rem;font-family:inherit;color:var(--txt);
+  background:rgba(255,255,255,.045);border:1px solid var(--stroke);border-radius:11px;
+  transition:border-color .2s,box-shadow .2s,background .2s;outline:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--m-base);background:rgba(255,255,255,.07);
+  box-shadow:0 0 0 3px rgba(122,193,67,.20)}
+input::placeholder{color:#64748b}
+select{appearance:none;cursor:pointer;padding-right:32px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4' stroke-linecap='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 10px center;background-size:14px}
+select option{background:var(--opt-bg);color:var(--txt)}
+textarea{resize:vertical;min-height:70px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;
+  font-family:inherit;padding:9px 16px;border-radius:11px;font-size:.82rem;font-weight:700;
+  border:1px solid var(--stroke-2);background:rgba(255,255,255,.06);color:var(--txt);
+  transition:transform .2s cubic-bezier(.34,1.56,.64,1),background .2s,box-shadow .2s,opacity .2s}
+.btn svg{width:15px;height:15px}
+.btn:hover{transform:translateY(-2px);background:rgba(255,255,255,.11)}
+.btn:active{transform:scale(.96)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn.primary{background:linear-gradient(135deg,#7AC143,#4d9e28);color:#0b1120;border-color:transparent;
+  box-shadow:0 10px 28px -12px rgba(122,193,67,.9)}
+.btn.amber{background:linear-gradient(135deg,#F5A623,#e07b12);color:#0b1120;border-color:transparent}
+.btn.sm{padding:6px 11px;font-size:.75rem;border-radius:9px}
+.btn.block{width:100%;padding:12px}
+.btn.ghost{background:transparent}
+
+.msg{display:none;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:11px;font-size:.79rem;margin-bottom:14px}
+.msg.on{display:flex}
+.msg.err{background:rgba(208,59,59,.12);border:1px solid rgba(208,59,59,.4);color:#fecdd3}
+.msg.ok{background:rgba(12,163,12,.12);border:1px solid rgba(12,163,12,.4);color:#dcfce7}
+.msg svg{width:16px;height:16px;flex:0 0 auto;margin-top:1px}
+
+/* ───────── en-tête ───────── */
+header.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  background:var(--glass);backdrop-filter:blur(22px);border:1px solid var(--stroke);
+  border-radius:20px;padding:15px 20px;
+  box-shadow:0 0 60px rgba(122,193,67,.09), inset 0 1px 0 rgba(255,255,255,.06)}
+header.top .mark{width:56px;height:56px;flex:0 0 auto;border-radius:16px;padding:4px;
+  background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.02));
+  border:1px solid var(--stroke-2);box-shadow:0 0 26px rgba(122,193,67,.25)}
+header.top .mark svg{width:100%;height:100%;display:block}
+header.top h1{font-size:1.1rem;font-weight:800;letter-spacing:-.3px}
+header.top h1 span{background:linear-gradient(90deg,#7AC143,#F5A623);-webkit-background-clip:text;
+  background-clip:text;-webkit-text-fill-color:transparent}
+header.top p{color:var(--txt-dim);font-size:.76rem;margin-top:2px}
+header.top .grow{flex:1 1 220px;min-width:180px}
+.qui{display:flex;align-items:center;gap:10px}
+.qui .av{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-weight:800;
+  font-size:.8rem;background:linear-gradient(135deg,#7AC143,#008B8B);color:#0b1120}
+.qui .id{font-size:.78rem;line-height:1.3}
+.qui .id b{display:block}
+.qui .id span{color:var(--txt-dim);font-size:.72rem}
+
+/* ───────── filtres ───────── */
+.filtres{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin:16px 0 4px;
+  background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--stroke);
+  border-radius:16px;padding:14px 16px}
+.filtres .f{display:flex;flex-direction:column;gap:5px;min-width:135px;flex:1 1 135px}
+.filtres .f.large{flex:2 1 220px}
+.filtres label{font-size:.7rem;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.4px}
+.filtres select,.filtres input{padding:8px 11px;font-size:.8rem}
+.presets{display:flex;gap:4px;padding:3px;border-radius:11px;background:rgba(255,255,255,.045);border:1px solid var(--stroke)}
+.presets button{flex:1;padding:6px 9px;border:0;border-radius:8px;background:transparent;color:var(--txt-dim);
+  font-family:inherit;font-size:.75rem;font-weight:700;cursor:pointer;transition:.2s;white-space:nowrap}
+.presets button:hover{color:var(--txt);background:rgba(255,255,255,.06)}
+.presets button[aria-pressed=true]{background:var(--m-base);color:#0b1120}
+.filtres .actions{display:flex;gap:8px;flex:0 0 auto}
+
+/* ───────── tuiles ───────── */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:14px 0}
+.kpi{background:var(--glass);backdrop-filter:blur(18px);border:1px solid var(--stroke);
+  border-radius:16px;padding:15px 17px;position:relative;overflow:hidden;
+  animation:enter .45s cubic-bezier(.22,1,.36,1) both}
+.kpi::after{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--c,#7AC143);opacity:.85}
+.kpi .lb{display:flex;align-items:center;gap:7px;font-size:.72rem;font-weight:700;color:var(--txt-dim);
+  text-transform:uppercase;letter-spacing:.4px}
+.kpi .lb svg{width:14px;height:14px;color:var(--c,#7AC143)}
+/* chiffres proportionnels sur les grands nombres, jamais tabular-nums */
+.kpi .v{font-size:1.85rem;font-weight:800;line-height:1.15;margin-top:7px;letter-spacing:-1px}
+.kpi .sub{font-size:.73rem;color:var(--txt-dim);margin-top:2px}
+
+/* ───────── cartes graphiques ───────── */
+.grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px;margin-bottom:14px}
+.carte{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--stroke);
+  border-radius:18px;overflow:hidden;animation:enter .5s cubic-bezier(.22,1,.36,1) both;
+  box-shadow:0 20px 50px -34px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.05)}
+.carte.pleine{grid-column:1/-1}
+.carte-tete{display:flex;align-items:center;gap:11px;padding:14px 18px;border-bottom:1px solid var(--stroke);
+  background:linear-gradient(90deg,var(--tint,rgba(122,193,67,.12)),transparent 65%)}
+.carte-tete .ic{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex:0 0 auto;
+  background:rgba(255,255,255,.07);border:1px solid var(--stroke-2)}
+.carte-tete .ic svg{width:17px;height:17px;color:var(--c,#7AC143)}
+.carte-tete h2{font-size:.92rem;font-weight:700}
+.carte-tete small{display:block;color:var(--txt-dim);font-size:.72rem;font-weight:500;margin-top:1px}
+.carte-tete .fin{margin-left:auto;display:flex;gap:6px}
+.carte-corps{padding:16px 18px 18px}
+
+/* légende — toujours présente dès 2 séries */
+.legende{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px}
+.legende span{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;color:var(--txt-soft)}
+.legende i{width:11px;height:11px;border-radius:3px;display:block;flex:0 0 auto}
+.legende i.trait{width:16px;height:2px;border-radius:2px}
+
+.viz{width:100%;display:block;overflow:visible}
+.viz text{font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
+.viz .tick{fill:var(--viz-muted);font-size:11px;font-variant-numeric:tabular-nums}
+.viz .cat{fill:var(--txt-soft);font-size:11.5px}
+.viz .lbl{fill:var(--viz-ink);font-size:11.5px;font-weight:700}
+.viz .grid{stroke:var(--viz-grid);stroke-width:1;shape-rendering:crispEdges}
+.viz .axe{stroke:var(--viz-axis);stroke-width:1;shape-rendering:crispEdges}
+.viz .zone{fill:transparent;cursor:pointer}
+.viz .mark{transition:opacity .15s}
+.carte:hover .viz .mark.pale{opacity:.45}
+
+.tt{position:fixed;z-index:60;pointer-events:none;opacity:0;transition:opacity .12s;
+  background:var(--tt-bg);border:1px solid var(--stroke-2);border-radius:11px;
+  padding:9px 12px;font-size:.78rem;box-shadow:0 18px 40px -18px #000;max-width:260px}
+.tt.on{opacity:1}
+.tt .t{font-weight:700;font-size:.8rem;margin-bottom:5px;color:var(--txt)}
+.tt .r{display:flex;align-items:center;gap:7px;margin-top:3px;color:var(--txt-dim);font-size:.76rem}
+.tt .r i{width:14px;height:2px;border-radius:2px;flex:0 0 auto}
+/* la valeur mène, le libellé suit */
+.tt .r b{color:var(--txt);font-weight:700;font-variant-numeric:tabular-nums}
+
+/* jumeau tabulaire de chaque graphique */
+.jumeau{display:none;max-height:290px;overflow:auto}
+.jumeau.on{display:block}
+.jumeau table{width:100%;border-collapse:collapse;font-size:.78rem}
+.jumeau th{text-align:left;padding:7px 9px;color:var(--txt-dim);font-weight:700;font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid var(--stroke);position:sticky;top:0;
+  background:var(--sticky)}
+.jumeau td{padding:6px 9px;border-bottom:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
+.jumeau td:first-child{font-variant-numeric:normal}
+
+/* ───────── tableau des fiches ───────── */
+.tbl-zone{overflow:auto;max-height:620px}
+table.fiches{width:100%;border-collapse:collapse;font-size:.79rem}
+table.fiches th{position:sticky;top:0;z-index:2;background:var(--sticky);text-align:left;padding:10px 11px;
+  font-size:.7rem;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.4px;
+  border-bottom:1px solid var(--stroke);cursor:pointer;white-space:nowrap;user-select:none}
+table.fiches th:hover{color:var(--txt)}
+table.fiches th .fl{opacity:.35;margin-left:3px}
+table.fiches th[aria-sort] .fl{opacity:1;color:var(--m-base)}
+table.fiches td{padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
+table.fiches td.txt{font-variant-numeric:normal}
+table.fiches tbody tr{cursor:pointer;transition:background .15s}
+table.fiches tbody tr:hover{background:rgba(255,255,255,.045)}
+.ref{font-family:ui-monospace,monospace;color:var(--or);font-size:.76rem}
+
+.puce{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
+  font-size:.71rem;font-weight:700;white-space:nowrap}
+.puce svg{width:11px;height:11px;flex:0 0 auto}
+.puce.soumis{background:rgba(148,163,184,.16);color:#cbd5e1;border:1px solid rgba(148,163,184,.4)}
+.puce.en_verification{background:rgba(250,178,25,.14);color:#fde68a;border:1px solid rgba(250,178,25,.45)}
+.puce.valide{background:rgba(12,163,12,.15);color:#bbf7d0;border:1px solid rgba(12,163,12,.5)}
+.puce.rejete{background:rgba(208,59,59,.15);color:#fecdd3;border:1px solid rgba(208,59,59,.5)}
+.puce.doublon{background:rgba(236,131,90,.15);color:#fed7aa;border:1px solid rgba(236,131,90,.5)}
+
+.pagination{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;
+  border-top:1px solid var(--stroke);font-size:.77rem;color:var(--txt-dim);flex-wrap:wrap}
+
+/* ───────── panneau fiche ───────── */
+.voile{position:fixed;inset:0;z-index:70;background:rgba(2,6,23,.72);backdrop-filter:blur(4px);
+  opacity:0;pointer-events:none;transition:opacity .28s}
+.voile.on{opacity:1;pointer-events:auto}
+.panneau{position:fixed;top:0;right:0;bottom:0;width:min(680px,100%);z-index:71;overflow-y:auto;
+  background:var(--panneau-bg);border-left:1px solid var(--stroke-2);
+  transform:translateX(100%);transition:transform .34s cubic-bezier(.22,1,.36,1);
+  box-shadow:-30px 0 80px -30px #000}
+.panneau.on{transform:none}
+.panneau-tete{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:16px 20px;
+  border-bottom:1px solid var(--stroke);background:rgba(15,23,42,.94);backdrop-filter:blur(14px)}
+.panneau-tete h3{font-size:.98rem;font-weight:800}
+.panneau-tete .fin{margin-left:auto}
+.panneau-corps{padding:18px 20px 60px}
+.sect{margin-bottom:20px}
+.sect h4{display:flex;align-items:center;gap:8px;font-size:.82rem;font-weight:700;color:var(--or);
+  margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--stroke)}
+.sect h4 svg{width:15px;height:15px}
+.lig{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:6px 2px;font-size:.79rem;
+  border-bottom:1px dashed rgba(255,255,255,.06)}
+.lig dt{color:var(--txt-dim)}
+.lig dd{font-weight:600;color:var(--txt);word-break:break-word}
+.lig dd.vide{color:#64748b;font-weight:400;font-style:italic}
+.pj{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:11px;margin-top:7px;
+  background:rgba(255,255,255,.045);border:1px solid var(--stroke);font-size:.78rem}
+.pj svg{width:16px;height:16px;color:var(--m-acq);flex:0 0 auto}
+.pj a{margin-left:auto;color:var(--m-base);font-weight:700;text-decoration:none}
+.pj a:hover{text-decoration:underline}
+.valide-box{background:rgba(255,255,255,.04);border:1px solid var(--stroke);border-radius:14px;padding:15px}
+.valide-box .rangee{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:11px}
+
+.vide-etat{padding:50px 20px;text-align:center;color:var(--txt-dim)}
+.vide-etat svg{width:42px;height:42px;opacity:.4;margin-bottom:12px}
+.chargement{padding:44px;text-align:center;color:var(--txt-dim);font-size:.85rem}
+.spin{display:inline-block;width:17px;height:17px;border:2px solid rgba(255,255,255,.2);
+  border-top-color:var(--m-base);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@keyframes enter{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+/* refetch : on garde l'image précédente en retrait, pas de squelette */
+.rafraichit{opacity:.45;transition:opacity .2s}
+
+footer.pied{margin-top:26px;text-align:center;font-size:.72rem;color:var(--txt-dim);line-height:1.85}
+footer.pied b{color:var(--txt-soft)}
+.sep{color:#475569;margin:0 6px}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THÈME CLAIR
+   Le sombre reste le défaut. Le clair s'applique si le système est en clair
+   et que rien n'a été choisi, ou sur choix explicite via le bouton d'en-tête.
+   Les couleurs de STATUT ne changent pas de mode : c'est une palette réservée.
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="sombre"]){
+    --bg-0:#eef2f7; --bg-1:#f7f9fc; --bg-2:#eaeefb;
+    --glass:rgba(255,255,255,.74); --glass-2:rgba(255,255,255,.92);
+    --stroke:rgba(15,23,42,.10); --stroke-2:rgba(15,23,42,.16);
+    --txt:#0f172a; --txt-dim:#5b6779; --txt-soft:#33415a;
+
+    /* Palette de données, version claire : MÊMES teintes, MÊME ordre, mais
+       recalées pour un fond clair. Ce n'est pas une inversion du thème sombre —
+       chaque pas a été revalidé sur la surface blanche des cartes :
+       pire paire adjacente ΔE 16.1 (deutéranopie), 20.9 (vision normale),
+       contraste ≥ 3:1 pour les sept. L'identité d'une série ne change pas de
+       mode : le vert reste le vert, la 3e série reste ambre. */
+    --s1:#529605; --s2:#ce4aca; --s3:#af7303; --s4:#039f9f;
+    --s5:#d65101; --s6:#3b85ff; --s7:#e52964;
+
+    --viz-surface:#ffffff;
+    --viz-grid:rgba(15,23,42,.09);
+    --viz-axis:rgba(15,23,42,.20);
+    --viz-muted:#5b6779;
+    --viz-ink:#0f172a;
+
+    --or:#a86a00;
+    --opt-bg:#ffffff;
+    --sticky:#eef2f8;
+    --tt-bg:rgba(255,255,255,.97);
+    --panneau-bg:linear-gradient(160deg,#f7f9fc,#eef2f8 60%,#eaeefb);
+  }
+  :root:not([data-theme="sombre"]) .blob{opacity:.15}
+  :root:not([data-theme="sombre"]) .login-card{box-shadow:0 26px 70px -46px rgba(15,23,42,.7), inset 0 1px 0 #fff}
+  :root:not([data-theme="sombre"]) header.top{box-shadow:0 12px 40px -28px rgba(15,23,42,.55), inset 0 1px 0 #fff}
+  :root:not([data-theme="sombre"]) .carte,:root:not([data-theme="sombre"]) .kpi,:root:not([data-theme="sombre"]) .filtres{box-shadow:0 16px 40px -32px rgba(15,23,42,.5), inset 0 1px 0 #fff}
+  :root:not([data-theme="sombre"]) header.top h1 span{background:linear-gradient(90deg,#3f8f1f,#a86a00);
+    -webkit-background-clip:text;background-clip:text}
+  :root:not([data-theme="sombre"]) input,:root:not([data-theme="sombre"]) select,:root:not([data-theme="sombre"]) textarea,:root:not([data-theme="sombre"]) .btn{background:rgba(255,255,255,.9)}
+  :root:not([data-theme="sombre"]) .btn:hover{background:#fff}
+  :root:not([data-theme="sombre"]) .btn.ghost{background:transparent}
+  :root:not([data-theme="sombre"]) input::placeholder{color:#8b97a8}
+  :root:not([data-theme="sombre"]) select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235b6779' stroke-width='2.4' stroke-linecap='round'><path d='m6 9 6 6 6-6'/></svg>");background-repeat:no-repeat;
+    background-position:right 10px center;background-size:14px}
+  :root:not([data-theme="sombre"]) .presets{background:rgba(255,255,255,.9)}
+  :root:not([data-theme="sombre"]) .tt{box-shadow:0 18px 40px -20px rgba(15,23,42,.45)}
+  :root:not([data-theme="sombre"]) .panneau{box-shadow:-30px 0 70px -40px rgba(15,23,42,.6)}
+  :root:not([data-theme="sombre"]) .voile{background:rgba(15,23,42,.35)}
+:root:not([data-theme="sombre"]) .panneau-tete{background:rgba(247,249,252,.96)}
+  :root:not([data-theme="sombre"]) table.fiches tbody tr:hover{background:rgba(15,23,42,.04)}
+  :root:not([data-theme="sombre"]) table.fiches td{border-bottom-color:rgba(15,23,42,.07)}
+  :root:not([data-theme="sombre"]) .jumeau td{border-bottom-color:rgba(15,23,42,.07)}
+  :root:not([data-theme="sombre"]) .lig{border-bottom-color:rgba(15,23,42,.09)}
+  :root:not([data-theme="sombre"]) .lig dd.vide{color:#8b97a8}
+  :root:not([data-theme="sombre"]) .valide-box,:root:not([data-theme="sombre"]) .pj{background:rgba(255,255,255,.85)}
+  :root:not([data-theme="sombre"]) .msg.err{color:#7f1d1d;background:rgba(208,59,59,.09)}
+  :root:not([data-theme="sombre"]) .msg.ok{color:#14532d;background:rgba(12,163,12,.09)}
+  :root:not([data-theme="sombre"]) .spin{border-color:rgba(15,23,42,.15);border-top-color:var(--m-base)}
+  /* Puces de statut : la couleur reste la palette réservée, on n'ajuste que le
+     fond et l'encre pour rester lisible. L'icône et le mot portent le sens. */
+  :root:not([data-theme="sombre"]) .puce.soumis{background:rgba(100,116,139,.12);color:#334155;border-color:rgba(100,116,139,.45)}
+  :root:not([data-theme="sombre"]) .puce.en_verification{background:rgba(180,120,0,.12);color:#7c4a03;border-color:rgba(180,120,0,.45)}
+  :root:not([data-theme="sombre"]) .puce.valide{background:rgba(12,163,12,.12);color:#14532d;border-color:rgba(12,163,12,.5)}
+  :root:not([data-theme="sombre"]) .puce.rejete{background:rgba(208,59,59,.12);color:#7f1d1d;border-color:rgba(208,59,59,.5)}
+  :root:not([data-theme="sombre"]) .puce.doublon{background:rgba(196,90,40,.12);color:#7c2d12;border-color:rgba(196,90,40,.5)}
+}
+:root[data-theme="clair"]{
+    --bg-0:#eef2f7; --bg-1:#f7f9fc; --bg-2:#eaeefb;
+    --glass:rgba(255,255,255,.74); --glass-2:rgba(255,255,255,.92);
+    --stroke:rgba(15,23,42,.10); --stroke-2:rgba(15,23,42,.16);
+    --txt:#0f172a; --txt-dim:#5b6779; --txt-soft:#33415a;
+
+    /* Palette de données, version claire : MÊMES teintes, MÊME ordre, mais
+       recalées pour un fond clair. Ce n'est pas une inversion du thème sombre —
+       chaque pas a été revalidé sur la surface blanche des cartes :
+       pire paire adjacente ΔE 16.1 (deutéranopie), 20.9 (vision normale),
+       contraste ≥ 3:1 pour les sept. L'identité d'une série ne change pas de
+       mode : le vert reste le vert, la 3e série reste ambre. */
+    --s1:#529605; --s2:#ce4aca; --s3:#af7303; --s4:#039f9f;
+    --s5:#d65101; --s6:#3b85ff; --s7:#e52964;
+
+    --viz-surface:#ffffff;
+    --viz-grid:rgba(15,23,42,.09);
+    --viz-axis:rgba(15,23,42,.20);
+    --viz-muted:#5b6779;
+    --viz-ink:#0f172a;
+
+    --or:#a86a00;
+    --opt-bg:#ffffff;
+    --sticky:#eef2f8;
+    --tt-bg:rgba(255,255,255,.97);
+    --panneau-bg:linear-gradient(160deg,#f7f9fc,#eef2f8 60%,#eaeefb);
+}
+  :root[data-theme="clair"] .blob{opacity:.15}
+:root[data-theme="clair"] .login-card{box-shadow:0 26px 70px -46px rgba(15,23,42,.7), inset 0 1px 0 #fff}
+:root[data-theme="clair"] header.top{box-shadow:0 12px 40px -28px rgba(15,23,42,.55), inset 0 1px 0 #fff}
+:root[data-theme="clair"] .carte,:root[data-theme="clair"] .kpi,:root[data-theme="clair"] .filtres{box-shadow:0 16px 40px -32px rgba(15,23,42,.5), inset 0 1px 0 #fff}
+:root[data-theme="clair"] header.top h1 span{background:linear-gradient(90deg,#3f8f1f,#a86a00);
+  -webkit-background-clip:text;background-clip:text}
+:root[data-theme="clair"] input,:root[data-theme="clair"] select,:root[data-theme="clair"] textarea,:root[data-theme="clair"] .btn{background:rgba(255,255,255,.9)}
+:root[data-theme="clair"] .btn:hover{background:#fff}
+:root[data-theme="clair"] .btn.ghost{background:transparent}
+:root[data-theme="clair"] input::placeholder{color:#8b97a8}
+:root[data-theme="clair"] select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235b6779' stroke-width='2.4' stroke-linecap='round'><path d='m6 9 6 6 6-6'/></svg>");background-repeat:no-repeat;
+  background-position:right 10px center;background-size:14px}
+:root[data-theme="clair"] .presets{background:rgba(255,255,255,.9)}
+:root[data-theme="clair"] .tt{box-shadow:0 18px 40px -20px rgba(15,23,42,.45)}
+:root[data-theme="clair"] .panneau{box-shadow:-30px 0 70px -40px rgba(15,23,42,.6)}
+:root[data-theme="clair"] .voile{background:rgba(15,23,42,.35)}
+:root[data-theme="clair"] .panneau-tete{background:rgba(247,249,252,.96)}
+:root[data-theme="clair"] table.fiches tbody tr:hover{background:rgba(15,23,42,.04)}
+:root[data-theme="clair"] table.fiches td{border-bottom-color:rgba(15,23,42,.07)}
+:root[data-theme="clair"] .jumeau td{border-bottom-color:rgba(15,23,42,.07)}
+:root[data-theme="clair"] .lig{border-bottom-color:rgba(15,23,42,.09)}
+:root[data-theme="clair"] .lig dd.vide{color:#8b97a8}
+:root[data-theme="clair"] .valide-box,:root[data-theme="clair"] .pj{background:rgba(255,255,255,.85)}
+:root[data-theme="clair"] .msg.err{color:#7f1d1d;background:rgba(208,59,59,.09)}
+:root[data-theme="clair"] .msg.ok{color:#14532d;background:rgba(12,163,12,.09)}
+:root[data-theme="clair"] .spin{border-color:rgba(15,23,42,.15);border-top-color:var(--m-base)}
+/* Puces de statut : la couleur reste la palette réservée, on n'ajuste que le
+   fond et l'encre pour rester lisible. L'icône et le mot portent le sens. */
+:root[data-theme="clair"] .puce.soumis{background:rgba(100,116,139,.12);color:#334155;border-color:rgba(100,116,139,.45)}
+:root[data-theme="clair"] .puce.en_verification{background:rgba(180,120,0,.12);color:#7c4a03;border-color:rgba(180,120,0,.45)}
+:root[data-theme="clair"] .puce.valide{background:rgba(12,163,12,.12);color:#14532d;border-color:rgba(12,163,12,.5)}
+:root[data-theme="clair"] .puce.rejete{background:rgba(208,59,59,.12);color:#7f1d1d;border-color:rgba(208,59,59,.5)}
+:root[data-theme="clair"] .puce.doublon{background:rgba(196,90,40,.12);color:#7c2d12;border-color:rgba(196,90,40,.5)}
+
+@media(max-width:900px){
+  .grille{grid-template-columns:1fr}
+  .lig{grid-template-columns:1fr}
+}
+@media print{
+  .blobs,.filtres,.carte-tete .fin,.pagination,.btn,.panneau,.voile{display:none!important}
+  body{background:#fff!important;color:#000!important}
+  .carte,.kpi,header.top{background:#fff!important;border:1px solid #cbd5e1!important;
+    box-shadow:none!important;backdrop-filter:none!important;animation:none!important;break-inside:avoid}
+  .kpi .v,.carte-tete h2{color:#000!important}
+}
+</style>
+</head>
+<body>
+
+<div class="blobs"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div></div>
+
+<!-- ═══════════════ CONNEXION ═══════════════ -->
+<div class="login" id="ecranConnexion">
+  <form class="login-card" id="formConnexion" autocomplete="on">
+    <div class="mark" id="marqueLogin"></div>
+    <h1>Console Suivi &amp; Évaluation</h1>
+    <p class="sub">PNDA — Matching Grant · accès réservé aux agents habilités</p>
+    <div class="msg err" id="msgConnexion"></div>
+    <div class="champ">
+      <label for="courriel">Adresse e-mail</label>
+      <input type="email" id="courriel" name="email" required autocomplete="username" placeholder="agent@pnda.cd">
+    </div>
+    <div class="champ">
+      <label for="motdepasse">Mot de passe</label>
+      <input type="password" id="motdepasse" name="password" required autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button type="submit" class="btn primary block" id="btnConnexion">Se connecter</button>
+    <p class="sub" style="margin:16px 0 0;font-size:.72rem">
+      Les comptes sont créés par la Coordination Nationale.<br>Aucune inscription libre.
+    </p>
+  </form>
+</div>
+
+<!-- ═══════════════ CONSOLE ═══════════════ -->
+<div class="wrap" id="app" hidden>
+
+  <header class="top">
+    <div class="mark" id="marqueApp"></div>
+    <div class="grow">
+      <h1>Tableau de bord <span>Matching Grant</span></h1>
+      <p>Suivi &amp; Évaluation des Organisations de Producteurs — PNDA</p>
+    </div>
+    <div class="qui">
+      <div class="av" id="avatar">–</div>
+      <div class="id"><b id="nomAgent">—</b><span id="perimetre">—</span></div>
+    </div>
+    <span id="zoneTheme"></span>
+    <button class="btn sm" id="btnActualiser">Actualiser</button>
+    <button class="btn sm ghost" id="btnDeconnexion">Déconnexion</button>
+  </header>
+
+  <!-- une seule rangée de filtres, au-dessus de tout ce qu'elle cadre -->
+  <div class="filtres" id="filtres">
+    <div class="f large">
+      <label>Période</label>
+      <div class="presets" id="presets" role="group" aria-label="Période">
+        <button type="button" data-j="7">7 j</button>
+        <button type="button" data-j="30">30 j</button>
+        <button type="button" data-j="90">90 j</button>
+        <button type="button" data-j="0" aria-pressed="true">Tout</button>
+      </div>
+    </div>
+    <div class="f"><label for="fDu">Du</label><input type="date" id="fDu"></div>
+    <div class="f"><label for="fAu">Au</label><input type="date" id="fAu"></div>
+    <div class="f"><label for="fProvince">Province</label><select id="fProvince"><option value="">Toutes</option></select></div>
+    <div class="f"><label for="fTerritoire">Territoire / Ville</label><select id="fTerritoire"><option value="">Tous</option></select></div>
+    <div class="f"><label for="fUpe">UPE</label><select id="fUpe"><option value="">Toutes</option></select></div>
+    <div class="f"><label for="fType">Type d'entité</label><select id="fType"><option value="">Tous</option></select></div>
+    <div class="f"><label for="fStatut">Statut</label><select id="fStatut"><option value="">Tous</option></select></div>
+    <div class="f large"><label for="fTexte">Recherche</label>
+      <input type="search" id="fTexte" placeholder="Entité, responsable, référence, téléphone…"></div>
+    <div class="actions">
+      <button class="btn sm" id="btnRaz">Réinitialiser</button>
+      <button class="btn sm" id="btnCreerAgent">Créer un agent</button>
+      <button class="btn sm amber" id="btnExport">Export CSV</button>
+      <button class="btn sm" id="btnSynthese">Synthèse</button>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grille" id="grille">
+    <div class="carte" id="cFiches"></div>
+    <div class="carte" id="cTemps"></div>
+    <div class="carte" id="cType"></div>
+    <div class="carte" id="cSexe"></div>
+    <div class="carte" id="cFilieres"></div>
+    <div class="carte" id="cStatuts"></div>
+  </div>
+
+  <div class="carte pleine" style="--c:#008B8B;--tint:rgba(0,139,139,.14)">
+    <div class="carte-tete">
+      <div class="ic" id="icTable"></div>
+      <div><h2>Fiches enregistrées</h2><small id="sousTable">—</small></div>
+      <div class="fin"><button class="btn sm ghost" id="btnImprimer">Imprimer</button></div>
+    </div>
+    <div class="tbl-zone" id="zoneTable"><div class="chargement"><span class="spin"></span>Chargement…</div></div>
+    <div class="pagination" id="pagination" hidden>
+      <span id="infoPage">—</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm" id="btnPrec">Précédent</button>
+        <button class="btn sm" id="btnSuiv">Suivant</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="pied">
+    <b>République Démocratique du Congo</b><span class="sep">•</span>Ministère de l'Agriculture<span class="sep">•</span>PNDA
+    <br>Financement <b>Banque Mondiale</b><span class="sep">•</span>Coordination Nationale — Kinshasa
+  </footer>
+</div>
+
+<div class="voile" id="voile"></div>
+<aside class="panneau" id="panneau" aria-hidden="true">
+  <div class="panneau-tete">
+    <div><h3 id="ficheTitre">—</h3><small class="ref" id="ficheRef">—</small></div>
+    <div class="fin"><button class="btn sm ghost" id="btnFermerFiche">Fermer</button></div>
+  </div>
+  <div class="panneau-corps" id="ficheCorps"></div>
+</aside>
+
+<div class="tt" id="tooltip"></div>
+
+<div class="voile" id="voileAgent"></div>
+<div class="panneau" id="panneauAgent" aria-hidden="true">
+  <div class="panneau-tete">
+    <h3>Créer un compte agent</h3>
+    <div class="fin">
+      <button class="btn sm ghost" type="button" id="btnFermerAgent">Fermer</button>
+    </div>
+  </div>
+  <div class="panneau-corps">
+    <div class="msg err" id="msgAgent" style="margin-bottom:14px;display:none"></div>
+    <form id="formCreerAgent">
+      <div class="sect">
+        <h4>Compte</h4>
+        <div class="champ" style="margin-bottom:12px">
+          <label for="agentNom">Nom complet</label>
+          <input id="agentNom" type="text" placeholder="Ex. Jean Mbuyi">
+        </div>
+        <div class="champ" style="margin-bottom:12px">
+          <label for="agentEmail">Adresse e-mail</label>
+          <input id="agentEmail" type="email" placeholder="agent.kwilu@pnda.cd" required>
+        </div>
+        <div class="champ" style="margin-bottom:12px">
+          <label for="agentPassword">Mot de passe</label>
+          <input id="agentPassword" type="password" placeholder="Minimum 6 caractères" required>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h4>Rattachement</h4>
+        <div class="champ" style="margin-bottom:12px">
+          <label for="agentUpe">UPE</label>
+          <select id="agentUpe" required>
+            <option value="">Choisir une UPE</option>
+            <option value="COORD_NAT">COORD_NAT</option>
+            <option value="UPE_KWL">UPE_KWL</option>
+            <option value="UPE_KAS">UPE_KAS</option>
+            <option value="UPE_KAC">UPE_KAC</option>
+          </select>
+        </div>
+        <div class="champ" style="margin-bottom:12px">
+          <label for="agentRole">Rôle</label>
+          <select id="agentRole" required>
+            <option value="agent">agent</option>
+            <option value="superviseur">superviseur</option>
+            <option value="coordination">coordination</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="valide-box">
+        <div class="rangee">
+          <button class="btn primary" type="submit" id="btnSubmitAgent">Créer le compte</button>
+          <button class="btn ghost" type="button" id="btnCopierSql">Copier le SQL</button>
+        </div>
+        <p style="font-size:.75rem;color:var(--txt-dim);margin-top:8px;line-height:1.6">
+          La création du compte Auth et le rattachement dans <strong>profils_agents</strong> sont normalement faits côté serveur. Si le navigateur refuse l’insertion, le SQL exact est généré pour exécution dans Supabase.
+        </p>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/vendor/supabase.umd.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
