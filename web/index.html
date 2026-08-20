@@ -891,11 +891,27 @@ function updateProgress(){
 }
 
 /* ---- navigation ---- */
+/**
+ * Cadrage à l'arrivée sur une section.
+ * Section A : on montre la page entière, en-tête compris — c'est le premier
+ * contact, le logo et le contexte du projet ont leur place.
+ * À partir de B : on cale le haut de la vue sur la barre d'onglets, pour que
+ * l'agent voie tout de suite où il en est et ce qu'il lui reste, sans avoir à
+ * refaire défiler l'en-tête à chaque étape.
+ */
+function cadrer(){
+  if(cur === 0){ window.scrollTo({top:0,behavior:'smooth'}); return; }
+  const barre = document.querySelector('.progress-zone');
+  if(!barre){ window.scrollTo({top:0,behavior:'smooth'}); return; }
+  const y = barre.getBoundingClientRect().top + window.scrollY - 12;
+  window.scrollTo({top:Math.max(0, y), behavior:'smooth'});
+}
+
 function go(i, jump){
   if(jump && i>cur){ for(let k=cur;k<i;k++) if(!validate(k)){ renderSection(k); cur=k; updateProgress(); return; } }
   cur = Math.max(0, Math.min(RECAP, i));
   renderSection(cur); updateProgress();
-  window.scrollTo({top:0,behavior:'smooth'});
+  cadrer();
   document.getElementById('btnPrev').disabled = cur===0;
   const nx = document.getElementById('btnNext');
   nx.innerHTML = cur===RECAP-1 ? ico('check')+'Voir le récapitulatif'
