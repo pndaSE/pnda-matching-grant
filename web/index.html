@@ -508,6 +508,38 @@ const GEO = {
 };
 const ON = [{v:"oui",l:"Oui"},{v:"non",l:"Non"}];
 
+/* Types de structure reconnus par le PNDA pour le Matching Grant. */
+const STRUCTURES = [
+  {v:'avec',        l:'AVEC'},
+  {v:'op',          l:'Organisation de Producteurs (OP)'},
+  {v:'union',       l:'Union'},
+  {v:'cooperative', l:'Coopérative'},
+  {v:'pme',         l:'PME'},
+  {v:'prive',       l:'Privé'}
+];
+
+/* Familles d'activités. Ce choix commande l'affichage de la suite du
+   formulaire : une structure qui ne multiplie pas de semences ne se verra
+   jamais poser de question sur le SENASEM ni sur les stocks semenciers. */
+const ACTIVITES = [
+  {v:'semences',        l:'Multiplication de semences'},
+  {v:'production',      l:'Production agricole'},
+  {v:'transformation',  l:'Transformation et conservation'},
+  {v:'commercialisation', l:'Commercialisation et transport'}
+];
+/** Vrai si l'activité a été cochée en Section D. */
+const fait = a => d => (d.activites || []).includes(a);
+
+const INVESTISSEMENTS = [
+  "Équipement de production",
+  "Équipement de conservation",
+  "Équipement de transformation",
+  "Équipement de transfert",
+  "Équipement de commercialisation",
+  "Équipement de production d'intrants",
+  "Biologique"
+];
+
 /* ================================================================
    3. SCHÉMA DU FORMULAIRE (Sections A → H + Récapitulatif)
    ================================================================ */
@@ -543,25 +575,34 @@ const SECTIONS = [
   {n:'supplier_gender', l:"Sexe du Responsable", type:'radio', o:[{v:'1',l:'Femme'},{v:'2',l:'Homme'}], req:1, icon:'users'},
   {n:'supplier_date_of_birth', l:"Date de naissance", type:'date', req:1, icon:'cal'},
   {n:'supplier_id_type', l:"Type de pièce d'identification", type:'select', req:1, icon:'id',
-    o:[{v:'id_electeur',l:"Carte d'électeur"},{v:'id_passport',l:"Passeport"},{v:'no_id',l:"Je n'en ai pas"}]},
+    o:[{v:'id_electeur',l:"Carte d'électeur"},{v:'id_passport',l:"Passeport"},
+       {v:'autre',l:"Autre pièce"},{v:'no_id',l:"Je n'en ai pas"}]},
+  {n:'supplier_id_type_autre', l:"Précisez la pièce", type:'text', req:1, icon:'type',
+    ph:"Permis de conduire, carte de service, attestation…",
+    when:d=>d.supplier_id_type==='autre'},
   {n:'supplier_id_number', l:"Numéro de la pièce d'identité", type:'text', req:1, icon:'hash',
     when:d=>d.supplier_id_type && d.supplier_id_type!=='no_id'},
   {n:'supplier_id_number_confirm', l:"Confirmer le numéro de la pièce", type:'text', req:1, icon:'hash',
     match:'supplier_id_number', when:d=>d.supplier_id_type && d.supplier_id_type!=='no_id'},
-  {n:'supplier_phone_number', l:"Numéro de téléphone", type:'tel', req:1, ph:"+243 ...", icon:'phone'},
-  {n:'supplier_phone_number_confirm', l:"Confirmer le numéro de téléphone", type:'tel', req:1, ph:"+243 ...", icon:'phone', match:'supplier_phone_number'},
-  {n:'supplier_email', l:"Adresse e-mail de l'entité ou du responsable", type:'email', ph:"nom@exemple.cd", icon:'mail', full:1, fmt:'email'}
+  {n:'supplier_phone_number', l:"Numéro de téléphone", type:'tel', req:1, icon:'phone',
+    ph:"+243 81 234 5678", fmt:'tel', h:"Format RDC : +243 puis 9 chiffres, ou 0 puis 9 chiffres"},
+  {n:'supplier_phone_number_confirm', l:"Confirmer le numéro de téléphone", type:'tel', req:1,
+    ph:"+243 81 234 5678", icon:'phone', fmt:'tel', match:'supplier_phone_number'},
+  {n:'supplier_email', l:"Adresse e-mail de l'entité ou du responsable", type:'email',
+    ph:"nom@exemple.cd", icon:'mail', full:1, fmt:'email'}
 ]},
 
 { id:'D', t:"Activités de la structure", sub:"Statut légal, membres et exploitation", c:"#7AC143", icon:"brief", fields:[
   {n:'entity_name', l:"Nom légal de la structure", type:'text', req:1, icon:'brief', full:1},
-  {n:'entity_type', l:"Type de structure", type:'radio', req:1, icon:'list', full:1,
-    o:[{v:'association',l:'Association'},{v:'cooperative',l:'Coopérative'},{v:'entreprise',l:'Entreprise'},{v:'prive',l:'Privé'}]},
+  {n:'entity_type', l:"Type de structure", type:'radio', req:1, icon:'list', full:1, o:STRUCTURES},
+  {n:'activites', l:"Activités exercées par la structure", type:'checks', req:1, full:1, icon:'sprout',
+    o:ACTIVITES,
+    h:"Cochez tout ce qui s'applique. Les questions qui suivent s'adaptent : seules celles qui concernent vos activités vous seront posées."},
   {n:'patente', l:"Si privé, avez-vous une patente ?", type:'radio', o:ON, req:1, icon:'file', when:d=>d.entity_type==='prive'},
   {n:'patente_no', l:"Numéro de patente", type:'text', req:1, icon:'hash', when:d=>d.entity_type==='prive'&&d.patente==='oui'},
-  {n:'rccm', l:"Si entreprise, avez-vous un numéro RCCM ?", type:'radio', o:ON, req:1, icon:'file', when:d=>d.entity_type==='entreprise',
+  {n:'rccm', l:"Si PME, avez-vous un numéro RCCM ?", type:'radio', o:ON, req:1, icon:'file', when:d=>d.entity_type==='pme',
    h:"Registre de Commerce et de Crédit Mobilier"},
-  {n:'rccm_no', l:"Numéro RCCM", type:'text', req:1, icon:'hash', when:d=>d.entity_type==='entreprise'&&d.rccm==='oui'},
+  {n:'rccm_no', l:"Numéro RCCM", type:'text', req:1, icon:'hash', when:d=>d.entity_type==='pme'&&d.rccm==='oui'},
   {n:'idnat', l:"Avez-vous un numéro d'identification nationale ?", type:'radio', o:ON, req:1, icon:'id'},
   {n:'idnat_no', l:"Numéro d'identification nationale", type:'text', req:1, icon:'hash', when:d=>d.idnat==='oui'},
   {n:'impot', l:"Avez-vous un numéro d'impôt ?", type:'radio', o:ON, req:1, icon:'file'},
@@ -575,8 +616,10 @@ const SECTIONS = [
   {n:'faitiere_nom', l:"Si oui, laquelle ?", type:'text', req:1, icon:'type', when:d=>d.faitiere==='oui'},
   {n:'organisme_structuration', l:"Organisme ayant procédé à votre structuration", type:'text', icon:'brief'},
   {n:'date_structuration', l:"Date de structuration de l'entité", type:'date', icon:'cal'},
-  {n:'visite_senasem', l:"Le SENASEM a-t-il déjà visité votre champ ?", type:'radio', o:ON, req:1, icon:'sprout'},
-  {n:'date_visite_senasem', l:"Date de la dernière visite SENASEM", type:'date', req:1, icon:'cal', when:d=>d.visite_senasem==='oui'},
+  {n:'visite_senasem', l:"Le SENASEM a-t-il déjà visité votre champ ?", type:'radio', o:ON, req:1, icon:'sprout',
+    when:fait('semences')},
+  {n:'date_visite_senasem', l:"Date de la dernière visite SENASEM", type:'date', req:1, icon:'cal',
+    when:d=>fait('semences')(d) && d.visite_senasem==='oui'},
   {n:'date_derniere_ag', l:"Date de la dernière assemblée générale", type:'date', icon:'cal'},
   {n:'nbr_membres', l:"Nombre de membres de l'entité", type:'number', req:1, min:0, icon:'users'},
   {n:'nbr_femmes', l:"Dont femmes", type:'number', min:0, icon:'users'},
@@ -585,11 +628,14 @@ const SECTIONS = [
   {n:'nbr_autochtones', l:"Dont personnes autochtones", type:'number', min:0, icon:'users'},
   {n:'nbr_staff', l:"Nombre d'employés (agents)", type:'number', min:0, icon:'users'},
   {n:'nbr_staff_forme_IDEA', l:"Employés à former à l'utilisation du SIGI", type:'number', min:0, icon:'users'},
-  {n:'superficie_champ_communautaire', l:"Superficie du champ communautaire (ha)", type:'number', min:0, u:'ha', icon:'sprout'},
+  {n:'superficie_champ_communautaire', l:"Superficie du champ communautaire (ha)", type:'number', min:0, u:'ha', icon:'sprout',
+    when:fait('production')},
   {n:'filiere', l:"Filière(s) exploitée(s) par l'entité", type:'checks', full:1, icon:'sprout',
-    o:['Maïs','Soja','Mucuna','Manioc','Riz','Haricot','Arachide','Autre']},
-  {n:'filiere_autre', l:"Si autre filière, précisez", type:'text', icon:'type', when:d=>(d.filiere||[]).includes('Autre')},
-  {n:'quantite_produite', l:"Quantité produite lors de la dernière saison (Kg)", type:'number', min:0, u:'Kg', icon:'scale'}
+    o:['Maïs','Soja','Mucuna','Manioc','Riz','Haricot','Arachide','Autre'], when:fait('production')},
+  {n:'filiere_autre', l:"Si autre filière, précisez", type:'text', icon:'type',
+    when:d=>fait('production')(d) && (d.filiere||[]).includes('Autre')},
+  {n:'quantite_produite', l:"Quantité produite lors de la dernière saison (Kg)", type:'number', min:0, u:'Kg', icon:'scale',
+    when:fait('production')}
 ]},
 
 { id:'E', t:"Informations bancaires", sub:"Compte de l'entité et coordonnées de paiement", c:"#F5A623", icon:"bank", fields:[
@@ -608,17 +654,29 @@ const SECTIONS = [
     h:"Document fourni par votre banque — 10 Mo maximum"}
 ]},
 
-{ id:'F', t:"Informations complémentaires", sub:"Stocks, projections et logistique", c:"#F26522", icon:"box", fields:[
-  {n:'avoir_lieu_commercialisation', l:"Avez-vous un lieu de commercialisation ou un magasin de stockage ?", type:'radio', o:ON, req:1, icon:'store', full:1},
-  {n:'capacite_transport', l:"Avez-vous une capacité de transport pour l'évacuation vers les points de commercialisation ou de stockage ?", type:'radio', o:ON, req:1, icon:'truck', full:1},
-  {n:'stock_mais', l:"Stock de semence de maïs (Kg)", type:'number', min:0, u:'Kg', icon:'box'},
-  {n:'projection_mais_kg', l:"Production de maïs estimée — prochaine saison (Kg)", type:'number', min:0, u:'Kg', icon:'sprout'},
-  {n:'stock_soja', l:"Stock de semence de soja (Kg)", type:'number', min:0, u:'Kg', icon:'box'},
-  {n:'projection_soja_kg', l:"Production de soja estimée — prochaine saison (Kg)", type:'number', min:0, u:'Kg', icon:'sprout'},
-  {n:'stock_mukuna', l:"Stock de semence de mucuna (Kg)", type:'number', min:0, u:'Kg', icon:'box'},
-  {n:'projection_mukuna_kg', l:"Production de mucuna estimée — prochaine saison (Kg)", type:'number', min:0, u:'Kg', icon:'sprout'},
-  {n:'stock_manioc_ml', l:"Superficie du parc à bois (ha)", type:'number', min:0, u:'ha', icon:'sprout'},
-  {n:'projection_manioc_ml', l:"Superficie du parc à bois — saison prochaine (ha)", type:'number', min:0, u:'ha', icon:'sprout'}
+{ id:'F', t:"Informations complémentaires", sub:"Capacités et stocks, selon les activités déclarées", c:"#F26522", icon:"box", fields:[
+  {type:'notice', n:'aucune_activite', when:d=>!(d.activites||[]).length,
+   html:"Aucune activité n'a été cochée en Section D. Revenez y indiquer ce que fait la structure : cette section s'adaptera en conséquence."},
+
+  /* Transformation et conservation */
+  {n:'equipement_transformation', l:"Disposez-vous d'équipements de transformation ou de conservation ?",
+   type:'radio', o:ON, req:1, icon:'box', full:1, when:fait('transformation')},
+
+  /* Commercialisation et transport */
+  {n:'avoir_lieu_commercialisation', l:"Avez-vous un lieu de commercialisation ou un magasin de stockage ?",
+   type:'radio', o:ON, req:1, icon:'store', full:1, when:fait('commercialisation')},
+  {n:'capacite_transport', l:"Avez-vous une capacité de transport pour l'évacuation vers les points de commercialisation ou de stockage ?",
+   type:'radio', o:ON, req:1, icon:'truck', full:1, when:fait('commercialisation')},
+
+  /* Multiplication de semences — rien de tout cela n'est demandé sinon */
+  {n:'stock_mais', l:"Stock de semence de maïs (Kg)", type:'number', min:0, u:'Kg', icon:'box', when:fait('semences')},
+  {n:'projection_mais_kg', l:"Production de maïs estimée — prochaine saison (Kg)", type:'number', min:0, u:'Kg', icon:'sprout', when:fait('semences')},
+  {n:'stock_soja', l:"Stock de semence de soja (Kg)", type:'number', min:0, u:'Kg', icon:'box', when:fait('semences')},
+  {n:'projection_soja_kg', l:"Production de soja estimée — prochaine saison (Kg)", type:'number', min:0, u:'Kg', icon:'sprout', when:fait('semences')},
+  {n:'stock_mukuna', l:"Stock de semence de mucuna (Kg)", type:'number', min:0, u:'Kg', icon:'box', when:fait('semences')},
+  {n:'projection_mukuna_kg', l:"Production de mucuna estimée — prochaine saison (Kg)", type:'number', min:0, u:'Kg', icon:'sprout', when:fait('semences')},
+  {n:'stock_manioc_ml', l:"Superficie du parc à bois (ha)", type:'number', min:0, u:'ha', icon:'sprout', when:fait('semences')},
+  {n:'projection_manioc_ml', l:"Superficie du parc à bois — saison prochaine (ha)", type:'number', min:0, u:'ha', icon:'sprout', when:fait('semences')}
 ]},
 
 { id:'G', t:"Subvention à l'investissement", sub:"Contraintes à lever pour la performance", c:"#4F8EF7", icon:"gift", fields:[
@@ -626,13 +684,13 @@ const SECTIONS = [
    type:'textarea', req:1, full:1, icon:'edit', ph:"Décrivez la contrainte majeure (équipement, intrants, stockage, transport, formation…)"},
   {n:'besoin_estime', l:"Montant estimé de l'investissement nécessaire", type:'number', min:0, u:'$', icon:'wallet',
    h:"Montant indicatif en dollars américains (USD)"},
-  {n:'nature_investissement', l:"Nature de l'investissement envisagé", type:'select', icon:'list',
-   o:['Équipement agricole','Intrants et semences','Infrastructure de stockage','Moyens de transport','Renforcement des capacités','Autre']}
+  {n:'nature_investissement', l:"Nature de l'investissement envisagé", type:'select', icon:'list', o:INVESTISSEMENTS}
 ]},
 
 { id:'H', t:"Autres informations", sub:"Antécédents, formations et déclaration", c:"#8E9AAF", icon:"clip", fields:[
   {n:'culpabilite', l:"Avez-vous été coupable de fraude dans le cadre des biens et services fournis aux bénéficiaires de projets de développement ?", type:'radio', o:ON, req:1, icon:'alert', full:1},
-  {n:'formation_multiplication', l:"Avez-vous été formé(e) aux techniques de production et de multiplication des semences / boutures certifiées par le SENASEM ?", type:'radio', o:ON, req:1, icon:'sprout', full:1},
+  {n:'formation_multiplication', l:"Avez-vous été formé(e) aux techniques de production et de multiplication des semences / boutures certifiées par le SENASEM ?", type:'radio', o:ON, req:1, icon:'sprout', full:1,
+   when:fait('semences')},
   {n:'appui_PNDA', l:"Avez-vous déjà bénéficié d'un appui du PNDA ?", type:'radio', o:ON, req:1, icon:'gift', full:1},
   {n:'appui_PNDA_precision', l:"Si oui, quel appui ?", type:'text', req:1, icon:'type', full:1, when:d=>d.appui_PNDA==='oui'},
   {n:'declarant_nom', l:"Nom et qualité du déclarant", type:'text', req:1, icon:'user'},
@@ -794,6 +852,13 @@ function wire(s){
         data[n] = el.value;
       }
       const box = el.closest('.f'); if(box) box.classList.remove('invalid');
+      const champ = s.fields.find(x=>x.n===n);
+      if(champ && champ.fmt==='tel' && el.type!=='file'){
+        el.addEventListener('blur', function once(){
+          el.removeEventListener('blur', once);
+          if(telValide(el.value)){ el.value = telNormalise(el.value); data[n] = el.value; }
+        });
+      }
       if(n==='geo_level_1'){ delete data.geo_level_2; delete data.geo_level_3; }
       if(n==='geo_level_2'){ delete data.geo_level_3; }
       if(n==='geo_level_1'||n==='geo_level_2'){
@@ -842,6 +907,19 @@ function captureGps(){
 
 /* ---- validation ---- */
 function isEmpty(v){ return v==null || v==='' || (Array.isArray(v)&&!v.length); }
+
+/** Numéro RDC : indicatif +243 ou 0 initial, puis 9 chiffres. */
+function telValide(v){
+  const brut = String(v||'').replace(/[\s.\-()]/g,'');
+  return /^(\+243|243|0)[0-9]{9}$/.test(brut);
+}
+/** Forme canonique « +243XXXXXXXXX » : deux saisies équivalentes se comparent. */
+function telNormalise(v){
+  const brut = String(v||'').replace(/[\s.\-()]/g,'');
+  if(/^0[0-9]{9}$/.test(brut))    return '+243'+brut.slice(1);
+  if(/^243[0-9]{9}$/.test(brut))  return '+'+brut;
+  return brut;
+}
 function validate(i){
   const s = SECTIONS[i]; if(!s) return true;
   let ok = true, first = null;
@@ -854,8 +932,14 @@ function validate(i){
     const v = data[f.n], msg = box.querySelector('.err em');
     let bad = null;
     if(f.req && isEmpty(v)) bad = "Ce champ est obligatoire.";
-    else if(!isEmpty(v) && f.match && v !== data[f.match]) bad = "La valeur saisie ne correspond pas au champ précédent.";
-    else if(!isEmpty(v) && f.fmt==='email' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) bad = "Adresse e-mail invalide.";
+    else if(!isEmpty(v) && f.fmt==='tel' && !telValide(v))
+      bad = "Numéro invalide. Attendu : +243 puis 9 chiffres, ou 0 puis 9 chiffres.";
+    else if(!isEmpty(v) && f.match && (f.fmt==='tel'
+              ? telNormalise(v) !== telNormalise(data[f.match])
+              : v !== data[f.match]))
+      bad = "La valeur saisie ne correspond pas au champ précédent.";
+    else if(!isEmpty(v) && f.fmt==='email' && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v))
+      bad = "Adresse e-mail invalide.";
     else if(!isEmpty(v) && f.type==='number' && (isNaN(+v) || +v < (f.min??-Infinity))) bad = "Valeur numérique invalide.";
     if(bad){ ok=false; if(msg) msg.textContent=bad; box.classList.add('invalid'); if(!first) first=box; }
   });

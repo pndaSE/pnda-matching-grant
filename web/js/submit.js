@@ -68,12 +68,14 @@
       responsable_sexe:           SEXE[d.supplier_gender] || null,
       responsable_date_naissance: dat(d.supplier_date_of_birth),
       responsable_type_piece:     txt(d.supplier_id_type),
+      responsable_piece_autre:    txt(d.supplier_id_type_autre),
       responsable_num_piece:      txt(d.supplier_id_number),
       responsable_telephone:      txt(d.supplier_phone_number),
       responsable_email:          txt(d.supplier_email),
 
       entite_nom:                  txt(d.entity_name),
       entite_type:                 txt(d.entity_type),
+      activites:                   (d.activites && d.activites.length) ? d.activites : null,
       patente:                     oui(d.patente),
       patente_no:                  txt(d.patente_no),
       rccm:                        oui(d.rccm),
@@ -114,6 +116,7 @@
       compte_swift:     txt(d.bank_account_swift),
       rib_path:         chemins.rib_doc || null,
 
+      equipement_transformation: oui(d.equipement_transformation),
       lieu_commercialisation:  oui(d.avoir_lieu_commercialisation),
       capacite_transport:      oui(d.capacite_transport),
       stock_mais_kg:           num(d.stock_mais),
