@@ -20,6 +20,9 @@ dist/
 
 # ─── Données de terrain (jamais versionnées) ────────────────────────────────
 exports/
+sauvegardes/
+*.dump
+*.sql.gz
 *.csv
 *.xlsx
 !docs/*.csv

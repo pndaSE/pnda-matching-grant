@@ -38,6 +38,7 @@ pnda-matching-grant/
 │   ├── 4-init-git.cmd                           dépôt local + marche à suivre GitHub
 │   ├── 5-deployer-fonction.cmd                  déploiement de l'Edge Function
 │   ├── 6-identite-github.cmd                    résout les refus 403 à la poussée
+│   ├── 7-sauvegarde-pg-dump.cmd                 sauvegarde complète restaurable
 │   └── serveur.ps1                              serveur PowerShell sans dépendance
 ├── .env.example                                 modèle de variables
 └── .gitignore
@@ -187,6 +188,56 @@ procédure manuelle : création dans *Authentication → Users*, puis le SQL de
 rattachement, généré et copiable en un clic.
 
 Tant que la fonction n'est pas déployée, la voie manuelle reste la seule.
+
+---
+
+## Copie de la base
+
+La console porte un onglet **Base de données** : d'abord l'inventaire — nom de
+la table, rôle, nombre de lignes, dernière écriture — puis, en cliquant une
+ligne, son contenu, avec filtre plein texte, tri par colonne et export CSV.
+
+Le bouton **Télécharger le clone SQL** produit un fichier `.sql` contenant les
+`INSERT` de toutes les lignes lisibles, dans l'ordre des dépendances. Rejoué sur
+une base créée par les migrations, il reconstruit la base à l'identique.
+
+Ce que le fichier gère, et qui a été vérifié par un rejeu réel dans une base
+vide :
+
+- apostrophes et accents (`L'Espérance`, `Kasaï Central`) ;
+- tableaux `text[]` (filières) et colonnes `jsonb` (`payload`) ;
+- montants en cents, sans perte ;
+- séquences remises à niveau (`setval`) après insertion d'identifiants explicites ;
+- `valide_par` pointant vers un compte absent de la base cible : neutralisé en
+  `null` par sous-requête, au lieu de faire échouer la clé étrangère ;
+- profils d'agents réinsérés seulement si le compte Auth existe dans la cible ;
+- rejeu deux fois de suite sans doublon (`on conflict do nothing`).
+
+Le fichier est enveloppé dans une transaction : en cas de problème, rien n'est
+inséré plutôt qu'une base à moitié remplie.
+
+### Deux limites, écrites dans l'en-tête du fichier
+
+**Le périmètre suit la RLS.** Un agent provincial ne copie que les fiches de son
+UPE ; l'en-tête du fichier le signale en majuscules. Seule la Coordination
+obtient une copie complète.
+
+**Ce n'est pas une sauvegarde de reprise.** Le navigateur ne voit ni les comptes
+Supabase Auth, ni les pièces jointes du stockage, ni les rôles et objets système.
+
+### La vraie sauvegarde
+
+`scripts/7-sauvegarde-pg-dump.cmd` lance `pg_dump` vers `sauvegardes/`, au format
+archive personnalisée, restaurable avec `pg_restore`. Elle inclut tout : schéma,
+données, index, contraintes, politiques RLS, déclencheurs, fonctions, séquences
+et comptes Auth. Le mot de passe est demandé par `pg_dump` lui-même ; le script
+ne le lit pas et ne l'enregistre pas.
+
+Sans PostgreSQL installé, l'alternative est *Supabase → Database → Backups →
+Download*.
+
+Le dossier `sauvegardes/` et les fichiers `*.dump` sont exclus du dépôt : ils
+contiennent les données personnelles des bénéficiaires.
 
 ---
 

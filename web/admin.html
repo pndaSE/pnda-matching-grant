@@ -223,6 +223,34 @@ header.top .grow{flex:1 1 220px;min-width:180px}
 .jumeau td{padding:6px 9px;border-bottom:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
 .jumeau td:first-child{font-variant-numeric:normal}
 
+
+/* ───────── base de données ───────── */
+.inv{width:100%;border-collapse:collapse;font-size:.79rem}
+.inv th{text-align:left;padding:10px 14px;font-size:.7rem;font-weight:700;color:var(--txt-dim);
+  text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--stroke);
+  position:sticky;top:0;background:var(--sticky);z-index:2}
+.inv td{padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.05);font-variant-numeric:tabular-nums}
+.inv td.txt{font-variant-numeric:normal}
+.inv tbody tr{cursor:pointer;transition:background .15s}
+.inv tbody tr:hover{background:rgba(255,255,255,.045)}
+.inv .nom{font-family:ui-monospace,monospace;color:var(--or);font-size:.78rem}
+.inv .role{color:var(--txt-dim);font-size:.75rem}
+.inv .lignes{font-weight:700}
+.badge-vue{display:inline-block;padding:2px 7px;border-radius:6px;font-size:.66rem;font-weight:700;
+  background:rgba(148,163,184,.16);color:var(--txt-dim);margin-left:6px}
+.barre-outils{display:flex;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--stroke);flex-wrap:wrap}
+.barre-outils input{max-width:320px;padding:8px 11px;font-size:.8rem}
+.barre-outils .info{margin-left:auto;font-size:.76rem;color:var(--txt-dim)}
+.tbl-brute{overflow:auto;max-height:560px}
+.tbl-brute table{width:100%;border-collapse:collapse;font-size:.76rem;white-space:nowrap}
+.tbl-brute th{position:sticky;top:0;z-index:2;background:var(--sticky);text-align:left;padding:9px 11px;
+  font-size:.68rem;font-weight:700;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.3px;
+  border-bottom:1px solid var(--stroke);cursor:pointer;user-select:none}
+.tbl-brute th:hover{color:var(--txt)}
+.tbl-brute td{padding:8px 11px;border-bottom:1px solid rgba(255,255,255,.05);
+  max-width:280px;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.tbl-brute td.nul{color:#64748b;font-style:italic}
+
 /* ───────── tableau des fiches ───────── */
 .tbl-zone{overflow:auto;max-height:620px}
 table.fiches{width:100%;border-collapse:collapse;font-size:.79rem}
@@ -349,6 +377,8 @@ footer.pied b{color:var(--txt-soft)}
 :root:not([data-theme="sombre"]) .panneau-tete{background:rgba(247,249,252,.96)}
   :root:not([data-theme="sombre"]) table.fiches tbody tr:hover{background:rgba(15,23,42,.04)}
   :root:not([data-theme="sombre"]) table.fiches td{border-bottom-color:rgba(15,23,42,.07)}
+:root:not([data-theme="sombre"]) .inv td,:root:not([data-theme="sombre"]) .tbl-brute td{border-bottom-color:rgba(15,23,42,.07)}
+:root:not([data-theme="sombre"]) .inv tbody tr:hover,:root:not([data-theme="sombre"]) .tbl-brute tbody tr:hover{background:rgba(15,23,42,.04)}
   :root:not([data-theme="sombre"]) .jumeau td{border-bottom-color:rgba(15,23,42,.07)}
   :root:not([data-theme="sombre"]) .lig{border-bottom-color:rgba(15,23,42,.09)}
   :root:not([data-theme="sombre"]) .lig dd.vide{color:#8b97a8}
@@ -410,6 +440,8 @@ footer.pied b{color:var(--txt-soft)}
 :root[data-theme="clair"] .panneau-tete{background:rgba(247,249,252,.96)}
 :root[data-theme="clair"] table.fiches tbody tr:hover{background:rgba(15,23,42,.04)}
 :root[data-theme="clair"] table.fiches td{border-bottom-color:rgba(15,23,42,.07)}
+:root[data-theme="clair"] .inv td,:root[data-theme="clair"] .tbl-brute td{border-bottom-color:rgba(15,23,42,.07)}
+:root[data-theme="clair"] .inv tbody tr:hover,:root[data-theme="clair"] .tbl-brute tbody tr:hover{background:rgba(15,23,42,.04)}
 :root[data-theme="clair"] .jumeau td{border-bottom-color:rgba(15,23,42,.07)}
 :root[data-theme="clair"] .lig{border-bottom-color:rgba(15,23,42,.09)}
 :root[data-theme="clair"] .lig dd.vide{color:#8b97a8}
@@ -535,6 +567,20 @@ footer.pied b{color:var(--txt-soft)}
         <button class="btn sm" id="btnSuiv">Suivant</button>
       </div>
     </div>
+  </div>
+
+
+  <div class="carte pleine" id="carteBase" style="--c:#92278F;--tint:rgba(146,39,143,.14);margin-top:14px">
+    <div class="carte-tete">
+      <div class="ic" id="icBase"></div>
+      <div><h2 id="titreBase">Base de données</h2><small id="sousBase">Inventaire des tables</small></div>
+      <div class="fin">
+        <button class="btn sm ghost" id="btnRetourInventaire" hidden>Inventaire</button>
+        <button class="btn sm" id="btnRafraichirBase">Actualiser</button>
+        <button class="btn sm amber" id="btnClone">Télécharger le clone SQL</button>
+      </div>
+    </div>
+    <div id="zoneBase"><div class="chargement"><span class="spin"></span>Lecture de l'inventaire…</div></div>
   </div>
 
   <footer class="pied">

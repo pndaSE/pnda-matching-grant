@@ -43,7 +43,10 @@ var P = {
 };
 function ico(n){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(P[n]||P.list)+'</svg>'; }
 
-var LOGO = '<img src="./image/logo-pnda.png" alt="Logo PNDA" style="display:block; width:72px; height:72px; object-fit:contain; border-radius:12px;">';
+// Dimensions en pourcentage : le conteneur .mark fait 78 px sur l'écran de
+// connexion mais 56 px dans l'en-tête. Une taille fixe de 72 px débordait et
+// recouvrait le sous-titre.
+var LOGO = '<img src="./image/logo-pnda.png" alt="Logo PNDA" style="display:block;width:100%;height:100%;object-fit:contain;">';
 
 /* ═══════════════ 2. Palettes ═══════════════
  * Ordre figé, jamais recyclé. Validé sur la surface #1b2537 :
@@ -179,7 +182,7 @@ function demarrer(session){
       var coord = r.data.role === 'coordination' || r.data.upe_code === 'COORD_NAT';
       $('#perimetre').textContent = (UPES[r.data.upe_code] || r.data.upe_code)
         + (coord ? ' — périmètre national' : ' — périmètre provincial');
-      return chargerReferentiels().then(chargerFiches);
+      return chargerReferentiels().then(chargerFiches).then(chargerInventaire);
     });
 }
 
@@ -1296,9 +1299,372 @@ $('#btnSynthese').addEventListener('click', function () {
   telecharger('PNDA_MatchingGrant_synthese_' + horodatage() + '.csv', csv(l), 'text/csv;charset=utf-8');
 });
 
+
+/* ════════════════════════════════════════════════════════════════════════════
+   15. BASE DE DONNÉES — inventaire, exploration, clone SQL
+   ────────────────────────────────────────────────────────────────────────────
+   Rappel de périmètre : tout ce qui suit passe par la même clé publiable et
+   les mêmes policies que le reste de la console. Un agent provincial n'inventorie
+   et n'exporte que les lignes de son UPE ; seule la Coordination obtient une
+   copie complète. Le fichier produit le rappelle en en-tête.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// Ordre de déclaration = ordre de rejeu : une table ne vient jamais avant
+// celles dont ses clés étrangères dépendent.
+var TABLES = [
+  { nom:'upe',                role:"Unités Provinciales d'Exécution et Coordination",
+    cles:['code'], conflit:'code' },
+  { nom:'provinces',          role:'Provinces couvertes par le projet',
+    cles:['code'], conflit:'code' },
+  { nom:'territoires',        role:'Territoires et villes, rattachés aux provinces',
+    cles:['id'], conflit:'id', serie:'id' },
+  { nom:'secteurs',           role:'Secteurs, chefferies, cités et communes',
+    cles:['id'], conflit:'id', serie:'id' },
+  { nom:'banques',            role:'Établissements bancaires proposés au formulaire',
+    cles:['code'], conflit:'code' },
+  { nom:'profils_agents',     role:"Rattachement des comptes agents à une UPE",
+    cles:['user_id'], conflit:'user_id', dependAuth:'user_id', horodatage:'created_at' },
+  { nom:'enregistrements_op', role:'Fiches d’enregistrement des OP et AVEC',
+    cles:['id'], conflit:'id', horodatage:'updated_at', authNullable:['valide_par'] }
+];
+
+var BASE = { inventaire:[], table:null, lignes:[], tri:{col:null,sens:1}, page:0, parPage:100, filtre:'' };
+
+/* ---- inventaire ---- */
+function chargerInventaire(){
+  var zone = $('#zoneBase');
+  zone.innerHTML = '';
+  var ch = creer('div','chargement');
+  ch.innerHTML = '<span class="spin"></span>';
+  ch.appendChild(creer('span', null, "Lecture de l'inventaire…"));
+  zone.appendChild(ch);
+
+  return Promise.all(TABLES.map(function (t) {
+    var p = sb.from(t.nom).select('*', { count:'exact', head:true })
+      .then(function (r) { return { t:t, lignes:r.error ? null : (r.count || 0), erreur:r.error }; });
+    if (!t.horodatage) return p;
+    return p.then(function (base) {
+      return sb.from(t.nom).select(t.horodatage).order(t.horodatage, { ascending:false }).limit(1)
+        .then(function (r) {
+          base.dernier = (r.data && r.data[0]) ? r.data[0][t.horodatage] : null;
+          return base;
+        });
+    });
+  })).then(function (res) { BASE.inventaire = res; rendreInventaire(); });
+}
+
+function rendreInventaire(){
+  $('#titreBase').textContent = 'Base de données';
+  $('#sousBase').textContent = 'Inventaire des tables — cliquez une ligne pour en voir le contenu';
+  $('#btnRetourInventaire').hidden = true;
+
+  var zone = $('#zoneBase'); zone.innerHTML = '';
+  var enveloppe = creer('div','tbl-zone');
+  var t = creer('table','inv'), thead = creer('thead'), tr = creer('tr');
+  ['Table','Rôle','Lignes','Dernière écriture'].forEach(function (h) { tr.appendChild(creer('th', null, h)); });
+  thead.appendChild(tr); t.appendChild(thead);
+
+  var tb = creer('tbody'), total = 0;
+  BASE.inventaire.forEach(function (e) {
+    var l = creer('tr');
+    var c1 = creer('td','txt');
+    c1.appendChild(creer('span','nom', e.t.nom));
+    l.appendChild(c1);
+    l.appendChild(creer('td','txt role', e.t.role));
+    if (e.erreur) {
+      var ce = creer('td','txt'); ce.colSpan = 2;
+      ce.appendChild(creer('span', null, 'Lecture refusée : ' + e.erreur.message));
+      ce.style.color = 'var(--st-rejete)';
+      l.appendChild(ce);
+    } else {
+      total += e.lignes;
+      l.appendChild(creer('td','lignes', n0(e.lignes)));
+      l.appendChild(creer('td', null, e.dernier ? dateHeure(e.dernier) : '—'));
+      l.addEventListener('click', function () { ouvrirTable(e.t); });
+    }
+    tb.appendChild(l);
+  });
+  t.appendChild(tb);
+  enveloppe.appendChild(t);
+  zone.appendChild(enveloppe);
+
+  var pied = creer('div','pagination');
+  pied.appendChild(creer('span', null,
+    BASE.inventaire.length + ' tables · ' + n0(total) + ' lignes visibles dans votre périmètre'
+    + (ETAT.profil && (ETAT.profil.role === 'coordination' || ETAT.profil.upe_code === 'COORD_NAT')
+       ? ' (périmètre national)' : ' (périmètre ' + (UPES[ETAT.profil && ETAT.profil.upe_code] || '—') + ')')));
+  zone.appendChild(pied);
+}
+
+/* ---- contenu d'une table ---- */
+function ouvrirTable(t){
+  BASE.table = t; BASE.page = 0; BASE.filtre = ''; BASE.tri = { col:null, sens:1 };
+  $('#titreBase').textContent = t.nom;
+  $('#sousBase').textContent = t.role;
+  $('#btnRetourInventaire').hidden = false;
+
+  var zone = $('#zoneBase'); zone.innerHTML = '';
+  var ch = creer('div','chargement');
+  ch.innerHTML = '<span class="spin"></span>';
+  ch.appendChild(creer('span', null, 'Lecture de ' + t.nom + '…'));
+  zone.appendChild(ch);
+
+  var q = sb.from(t.nom).select('*').limit(5000);
+  if (t.horodatage) q = q.order(t.horodatage, { ascending:false });
+  q.then(function (r) {
+    if (r.error) {
+      zone.innerHTML = '';
+      var d = creer('div','vide-etat');
+      d.innerHTML = ico('alerte');
+      d.appendChild(creer('p', null, 'Lecture impossible : ' + r.error.message));
+      zone.appendChild(d);
+      return;
+    }
+    BASE.lignes = r.data || [];
+    rendreTableBrute();
+  });
+}
+
+function valeurTexte(v){
+  if (v === null || v === undefined) return null;
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  return String(v);
+}
+
+function rendreTableBrute(){
+  var zone = $('#zoneBase'); zone.innerHTML = '';
+  var lignes = BASE.lignes;
+
+  if (BASE.filtre) {
+    var f = BASE.filtre.toLowerCase();
+    lignes = lignes.filter(function (r) {
+      return Object.keys(r).some(function (k) {
+        var v = valeurTexte(r[k]);
+        return v && v.toLowerCase().indexOf(f) > -1;
+      });
+    });
+  }
+  if (BASE.tri.col) {
+    lignes = lignes.slice().sort(function (a, b) {
+      var va = valeurTexte(a[BASE.tri.col]), vb = valeurTexte(b[BASE.tri.col]);
+      if (va === null) return 1; if (vb === null) return -1;
+      var na = parseFloat(va), nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb) && String(na) === va && String(nb) === vb) return (na - nb) * BASE.tri.sens;
+      return va.localeCompare(vb, 'fr') * BASE.tri.sens;
+    });
+  }
+
+  var outils = creer('div','barre-outils');
+  var rech = creer('input'); rech.type = 'search';
+  rech.placeholder = 'Filtrer dans ' + BASE.table.nom + '…';
+  rech.value = BASE.filtre;
+  var minu;
+  rech.addEventListener('input', function () {
+    clearTimeout(minu);
+    minu = setTimeout(function () { BASE.filtre = rech.value.trim(); BASE.page = 0; rendreTableBrute(); }, 200);
+  });
+  outils.appendChild(rech);
+  var bCsv = creer('button','btn sm','Export CSV de cette table');
+  bCsv.addEventListener('click', function () { exporterTableCsv(BASE.table, lignes); });
+  outils.appendChild(bCsv);
+  outils.appendChild(creer('span','info', n0(lignes.length) + ' ligne' + (lignes.length > 1 ? 's' : '')
+    + (BASE.filtre ? ' sur ' + n0(BASE.lignes.length) : '')));
+  zone.appendChild(outils);
+
+  if (!lignes.length) { messageVide(zone); return; }
+
+  var colonnes = Object.keys(lignes[0]);
+  var pages = Math.max(1, Math.ceil(lignes.length / BASE.parPage));
+  BASE.page = Math.min(BASE.page, pages - 1);
+  var vue = lignes.slice(BASE.page * BASE.parPage, (BASE.page + 1) * BASE.parPage);
+
+  var env = creer('div','tbl-brute');
+  var t = creer('table'), thead = creer('thead'), tr = creer('tr');
+  colonnes.forEach(function (c) {
+    var th = creer('th', null, c);
+    if (BASE.tri.col === c) th.appendChild(creer('span','fl', BASE.tri.sens > 0 ? ' ▲' : ' ▼'));
+    th.addEventListener('click', function () {
+      if (BASE.tri.col === c) BASE.tri.sens *= -1; else { BASE.tri.col = c; BASE.tri.sens = 1; }
+      rendreTableBrute();
+    });
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr); t.appendChild(thead);
+
+  var tb = creer('tbody');
+  vue.forEach(function (r) {
+    var l = creer('tr');
+    colonnes.forEach(function (c) {
+      var v = valeurTexte(r[c]);
+      var td = creer('td', v === null ? 'nul' : null, v === null ? 'null' : v);
+      td.title = v === null ? 'null' : v;
+      l.appendChild(td);
+    });
+    tb.appendChild(l);
+  });
+  t.appendChild(tb); env.appendChild(t); zone.appendChild(env);
+
+  var pag = creer('div','pagination');
+  pag.appendChild(creer('span', null, 'Page ' + (BASE.page + 1) + ' sur ' + pages
+    + ' — ' + colonnes.length + ' colonnes'));
+  var nav = creer('div'); nav.style.cssText = 'display:flex;gap:8px';
+  var bp = creer('button','btn sm','Précédent'); bp.disabled = BASE.page === 0;
+  bp.addEventListener('click', function () { BASE.page--; rendreTableBrute(); });
+  var bs = creer('button','btn sm','Suivant'); bs.disabled = BASE.page >= pages - 1;
+  bs.addEventListener('click', function () { BASE.page++; rendreTableBrute(); });
+  nav.appendChild(bp); nav.appendChild(bs); pag.appendChild(nav);
+  zone.appendChild(pag);
+}
+
+function exporterTableCsv(t, lignes){
+  if (!lignes.length) return;
+  var colonnes = Object.keys(lignes[0]);
+  var l = [colonnes].concat(lignes.map(function (r) {
+    return colonnes.map(function (c) { var v = valeurTexte(r[c]); return v === null ? '' : v; });
+  }));
+  telecharger('PNDA_' + t.nom + '_' + horodatage() + '.csv', csv(l), 'text/csv;charset=utf-8');
+}
+
+/* ---- clone SQL ---- */
+
+/** Littéral SQL sûr pour une valeur JSON quelconque. */
+function litteral(v, colonne, table){
+  if (v === null || v === undefined) return 'null';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'number') return isFinite(v) ? String(v) : 'null';
+  if (Array.isArray(v)) {
+    if (!v.length) return "'{}'";
+    return 'array[' + v.map(function (x) { return quote(String(x)); }).join(',') + ']';
+  }
+  if (typeof v === 'object') return quote(JSON.stringify(v)) + '::jsonb';
+  // Un identifiant de compte peut ne pas exister dans la base cible : la
+  // sous-requête retourne alors null au lieu de violer la clé étrangère.
+  if (table && table.authNullable && table.authNullable.indexOf(colonne) > -1) {
+    return '(select id from auth.users where id = ' + quote(String(v)) + '::uuid)';
+  }
+  return quote(String(v));
+}
+function quote(s){ return "'" + s.replace(/'/g, "''") + "'"; }
+
+function genererClone(){
+  var btn = $('#btnClone');
+  var libelle = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Lecture des tables…';
+
+  var coord = ETAT.profil && (ETAT.profil.role === 'coordination' || ETAT.profil.upe_code === 'COORD_NAT');
+
+  return TABLES.reduce(function (chaine, t) {
+    return chaine.then(function (acc) {
+      return sb.from(t.nom).select('*').limit(20000).then(function (r) {
+        acc.push({ t:t, lignes:r.error ? [] : (r.data || []), erreur:r.error });
+        btn.textContent = 'Lecture… (' + acc.length + '/' + TABLES.length + ')';
+        return acc;
+      });
+    });
+  }, Promise.resolve([])).then(function (paquets) {
+
+    var L = [];
+    var maintenant = new Date().toLocaleString('fr-FR');
+    L.push('-- ============================================================================');
+    L.push('--  PNDA — Matching Grant · copie des données');
+    L.push('--  Générée le ' + maintenant + ' depuis la console S&E');
+    L.push('--  Compte : ' + ((ETAT.profil && ETAT.profil.nom) || (ETAT.session && ETAT.session.user.email)));
+    L.push('--  Périmètre : ' + (coord ? 'national (toutes les UPE)'
+            : (UPES[ETAT.profil && ETAT.profil.upe_code] || '—') + ' UNIQUEMENT'));
+    if (!coord) {
+      L.push('--');
+      L.push('--  ⚠ COPIE PARTIELLE. Votre compte ne lit que les fiches de son UPE :');
+      L.push('--    ce fichier ne contient donc pas l’ensemble de la base. Pour une copie');
+      L.push('--    complète, utiliser un compte de la Coordination Nationale.');
+    }
+    L.push('--');
+    L.push('--  CE FICHIER CONTIENT LES DONNÉES, PAS LE SCHÉMA.');
+    L.push('--  Pour reconstruire une base vide, rejouer d’abord, dans l’ordre :');
+    L.push('--    supabase/migrations/20260818120000_init_matching_grant.sql');
+    L.push('--    supabase/migrations/20260818120200_profils_agents_rls_upe.sql');
+    L.push('--  puis ce fichier. La migration 120100 (référentiels) est inutile :');
+    L.push('--  les mêmes lignes figurent ci-dessous.');
+    L.push('--');
+    L.push('--  Non inclus, hors de portée du navigateur : les comptes Supabase Auth,');
+    L.push('--  les pièces jointes du stockage, les rôles et les objets système.');
+    L.push('--  Pour une sauvegarde vraiment complète : scripts/7-sauvegarde-pg-dump.cmd');
+    L.push('-- ============================================================================');
+    L.push('');
+    L.push('begin;');
+    L.push('');
+
+    paquets.forEach(function (p) {
+      var t = p.t;
+      L.push('-- ─── ' + t.nom + ' — ' + t.role);
+      if (p.erreur) {
+        L.push('-- Lecture refusée : ' + p.erreur.message);
+        L.push('');
+        return;
+      }
+      if (!p.lignes.length) { L.push('-- (aucune ligne lisible)'); L.push(''); return; }
+
+      var colonnes = Object.keys(p.lignes[0]);
+      var valeurs = p.lignes.map(function (r) {
+        return '  (' + colonnes.map(function (c) { return litteral(r[c], c, t); }).join(', ') + ')';
+      });
+
+      if (t.dependAuth) {
+        // Un profil ne se réinsère que si le compte Auth existe dans la base
+        // cible — sinon la clé étrangère bloquerait tout le fichier.
+        //
+        // Une instruction par ligne, et non un « values » collectif : dans un
+        // sous-select, les littéraux prennent le type text, ce qui casse la
+        // comparaison avec un uuid et l'affectation aux colonnes typées. En
+        // « insert … select 'x' », ils restent non typés et Postgres les
+        // convertit au type de chaque colonne.
+        p.lignes.forEach(function (r) {
+          var vals = colonnes.map(function (c) { return litteral(r[c], c, t); });
+          L.push('insert into public.' + t.nom + ' (' + colonnes.join(', ') + ')');
+          L.push('select ' + vals.join(', '));
+          L.push('where exists (select 1 from auth.users u where u.id = '
+                 + quote(String(r[t.dependAuth])) + '::uuid)');
+          L.push('on conflict (' + t.conflit + ') do nothing;');
+        });
+      } else {
+        L.push('insert into public.' + t.nom + ' (' + colonnes.join(', ') + ') values');
+        L.push(valeurs.join(',\n'));
+        L.push('on conflict (' + t.conflit + ') do nothing;');
+      }
+
+      if (t.serie) {
+        L.push("select setval(pg_get_serial_sequence('public." + t.nom + "','" + t.serie + "'),"
+             + " coalesce((select max(" + t.serie + ") from public." + t.nom + "), 1), true);");
+      }
+      L.push('');
+      L.push('-- ' + p.lignes.length + ' ligne(s)');
+      L.push('');
+    });
+
+    L.push('commit;');
+    L.push('');
+    L.push('-- Contrôle après rejeu :');
+    L.push('--   select relname, n_live_tup from pg_stat_user_tables order by relname;');
+
+    var nom = 'PNDA_MatchingGrant_clone_' + (coord ? 'national' : (ETAT.profil.upe_code || 'partiel'))
+            + '_' + horodatage() + '.sql';
+    telecharger(nom, L.join('\n'), 'application/sql;charset=utf-8');
+    btn.disabled = false; btn.textContent = libelle;
+  }).catch(function (e) {
+    btn.disabled = false; btn.textContent = libelle;
+    alert('Génération du clone impossible : ' + (e.message || e));
+  });
+}
+
+$('#btnRetourInventaire').addEventListener('click', rendreInventaire);
+$('#btnRafraichirBase').addEventListener('click', chargerInventaire);
+$('#btnClone').addEventListener('click', genererClone);
+
 /* ═══════════════ 14. Démarrage ═══════════════ */
 $('#marqueLogin').innerHTML = LOGO;
 $('#icTable').innerHTML = ico('list');
+$('#icBase').innerHTML = ico('box');
 if (window.PNDA_boutonTheme) window.PNDA_boutonTheme($('#zoneTheme'), 'btn sm ghost');
 
 // La bascule de thème change les teintes des marques : on redessine.
