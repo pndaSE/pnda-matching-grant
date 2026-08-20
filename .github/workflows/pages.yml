@@ -1,38 +1,91 @@
-name: Publier sur GitHub Pages
+# ============================================================================
+#  PNDA — Matching Grant · publication du site sur GitHub Pages
+#  ---------------------------------------------------------------------------
+#  Publie le contenu de web/ à chaque poussée sur main.
+#
+#    Formulaire terrain : https://<compte>.github.io/<depot>/
+#    Console S&E        : https://<compte>.github.io/<depot>/admin.html
+#
+#  Prérequis, une seule fois : dépôt → Settings → Pages → Source = GitHub Actions
+#
+#  Rien de sensible ne transite ici : web/ ne contient que la clé publiable
+#  Supabase, prévue pour être exposée. La clé service_role reste dans
+#  l'Edge Function, côté serveur.
+# ============================================================================
+name: Publier le site
 
 on:
   push:
-    branches: ["main"]
+    branches: [main]
     paths:
-      - "web/**"
-      - ".github/workflows/pages.yml"
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Une publication à la fois ; on ne coupe pas celle en cours.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  publier:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
+      url: ${{ steps.deploiement.outputs.page_url }}
     steps:
-      - name: Checkout
+      - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
-      - name: Vérifier les secrets
+      # Chercher le mot « service_role » ne marche pas : il figure dans les
+      # commentaires d'avertissement du code, et la bibliothèque supabase.umd.js
+      # contient le préfixe « sb_secret_ » nu comme chaîne de comparaison.
+      # On cherche donc de la matière de clé, pas des mentions.
+      - name: Garde-fou — aucune clé de service dans web/
         run: |
-          if grep -r "service_role\|sk-" web/; then
-            echo "❌ Clé service détectée dans web/ — déploiement annulé"
-            exit 1
+          set +e   # grep sort en 1 sans correspondance ; « bash -e » tuerait l'étape
+          PROBLEME=0
+
+          # Clés secrètes nouveau format : préfixe SUIVI d'au moins 20 caractères
+          TROUVE=$(grep -rIloE 'sb_secret_[A-Za-z0-9_-]{20,}' web/ --exclude-dir=vendor)
+          if [ -n "$TROUVE" ]; then
+            echo "::error::Clé secrète (format sb_secret_) trouvée dans : $TROUVE"
+            PROBLEME=1
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
-        with:
-          path: "web/"
+          # Clés héritées au format JWT : on décode la charge utile pour lire le
+          # rôle réellement porté par le jeton, au lieu de se fier à un mot-clé.
+          FICHIERS=$(grep -rIlE 'eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}' web/ --exclude-dir=vendor)
+          for f in $FICHIERS; do
+            for jwt in $(grep -oE 'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+' "$f"); do
+              charge=$(printf '%s' "$jwt" | cut -d. -f2 | tr '_-' '/+')
+              case $(( ${#charge} % 4 )) in 2) charge="${charge}==" ;; 3) charge="${charge}=" ;; esac
+              if printf '%s' "$charge" | base64 -d 2>/dev/null | grep -q 'service_role'; then
+                echo "::error file=$f::Jeton de rôle service détecté"
+                PROBLEME=1
+              fi
+            done
+          done
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v2
+          if [ "$PROBLEME" -ne 0 ]; then
+            echo "::error::Une clé de service est présente dans web/. Publication interrompue."
+            exit 1
+          fi
+          echo "Contrôle passé : aucune clé de service dans web/."
+
+      - name: Configurer Pages
+        uses: actions/configure-pages@v5
+
+      - name: Empaqueter web/
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./web
+
+      - name: Déployer
+        id: deploiement
+        uses: actions/deploy-pages@v4
