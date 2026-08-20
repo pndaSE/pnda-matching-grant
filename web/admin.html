@@ -476,7 +476,7 @@ footer.pied b{color:var(--txt-soft)}
 
 <!-- ═══════════════ CONNEXION ═══════════════ -->
 <div class="login" id="ecranConnexion">
-  <form class="login-card" id="formConnexion" autocomplete="on">
+  <form class="login-card" id="formConnexion" autocomplete="on" method="post" onsubmit="return false">
     <div class="mark" id="marqueLogin"></div>
     <h1>Console Suivi &amp; Évaluation</h1>
     <p class="sub">PNDA — Matching Grant · accès réservé aux agents habilités</p>
@@ -610,7 +610,7 @@ footer.pied b{color:var(--txt-soft)}
   </div>
   <div class="panneau-corps">
     <div class="msg err" id="msgAgent" style="margin-bottom:14px;display:none"></div>
-    <form id="formCreerAgent">
+    <form id="formCreerAgent" method="post" onsubmit="return false">
       <div class="sect">
         <h4>Compte</h4>
         <div class="champ" style="margin-bottom:12px">
