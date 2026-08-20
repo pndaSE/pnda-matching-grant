@@ -37,6 +37,7 @@ pnda-matching-grant/
 │   ├── 3-servir-formulaire.cmd                  serveur local (auto-détection)
 │   ├── 4-init-git.cmd                           dépôt local + marche à suivre GitHub
 │   ├── 5-deployer-fonction.cmd                  déploiement de l'Edge Function
+│   ├── 6-identite-github.cmd                    résout les refus 403 à la poussée
 │   └── serveur.ps1                              serveur PowerShell sans dépendance
 ├── .env.example                                 modèle de variables
 └── .gitignore
@@ -130,6 +131,15 @@ restent à votre main : elles demandent vos identifiants.
 git remote add origin https://github.com/VOTRE-COMPTE/pnda-matching-grant.git
 git push -u origin main
 ```
+
+**Si la poussée est refusée en 403** — message du type
+`Permission to X/depot.git denied to Y` — ce n'est pas un problème de Git mais
+d'identité : Windows a mémorisé les identifiants d'un autre compte GitHub et
+Git les réutilise. `scripts/6-identite-github.cmd` diagnostique et propose
+d'oublier l'identifiant mémorisé, puis inscrit le nom du compte dans l'adresse
+du dépôt pour que GitHub cible le bon. Pensez aussi à vous déconnecter de
+github.com dans le navigateur : sinon la fenêtre de connexion réutilise la
+session ouverte sans rien demander.
 
 Puis, une seule fois : dépôt → *Settings* → *Pages* → Source = **GitHub Actions**.
 

@@ -11,6 +11,15 @@ REM ===========================================================================
 
 cd /d "%~dp0.."
 
+REM --- Nettoyage des verrous laisses par une initialisation externe ---------
+REM  Git refuse toute operation si .git\index.lock existe. Ces fichiers sont
+REM  des residus sans valeur : les supprimer est sans risque quand aucune
+REM  commande git ne tourne.
+if exist ".git\index.lock" del /f /q ".git\index.lock" >nul 2>&1
+if exist ".git\HEAD.lock"  del /f /q ".git\HEAD.lock"  >nul 2>&1
+if exist ".git\objects\maintenance.lock" del /f /q ".git\objects\maintenance.lock" >nul 2>&1
+for /r ".git\objects" %%F in (tmp_obj_*) do del /f /q "%%F" >nul 2>&1
+
 git --version >nul 2>&1
 if errorlevel 1 (
   echo.
